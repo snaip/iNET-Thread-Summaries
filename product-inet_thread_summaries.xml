@@ -1,0 +1,519 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<product productid="inet_thread_summaries" active="1">
+	<title>iNET Thread Summaries</title>
+	<description>Provides editable thread summaries.</description>
+	<version>1.0</version>
+	<url>http://www.inetinteractive.com</url>
+	<versioncheckurl />
+	<dependencies>
+	</dependencies>
+	<codes>
+		<code version="*">
+			<installcode><![CDATA[
+				$vbulletin->db->hide_errors();
+				$vbulletin->db->query_write("ALTER TABLE `" . TABLE_PREFIX . "usergroup`
+					ADD `inet_thread_summaries` INT(10) UNSIGNED NOT NULL DEFAULT '0'
+				");
+				require_once(DIR . '/includes/class_bitfield_builder.php');
+				vB_Bitfield_Builder::save($db);
+				$vbulletin->db->show_errors();
+				build_forum_permissions();
+			]]></installcode>
+			<uninstallcode><![CDATA[
+				$vbulletin->db->hide_errors();
+				$vbulletin->db->query_write("ALTER TABLE `" . TABLE_PREFIX . "usergroup` DROP `inet_thread_summaries`;");
+				$vbulletin->db->show_errors();
+				build_forum_permissions();
+			]]></uninstallcode>
+		</code>
+		<code version="*">
+			<installcode><![CDATA[
+				$vbulletin->db->hide_errors();
+				$vbulletin->db->query_write("
+					CREATE TABLE IF NOT EXISTS `" . TABLE_PREFIX . "inet_thread_summaries` (
+						`summaryid` int(10) unsigned NOT NULL AUTO_INCREMENT,
+						`threadid` int(10) unsigned NOT NULL,
+						`userid` int(10) unsigned NOT NULL,
+						`content` varchar(10000) DEFAULT NULL,
+						`status` enum('Open','Closed','Deleted') NOT NULL DEFAULT 'Open',
+						`created` datetime NOT NULL,
+						PRIMARY KEY (`summaryid`),
+						KEY `threadid` (`threadid`)
+					)
+				");
+				$vbulletin->db->show_errors();
+				build_forum_permissions();
+			]]></installcode>
+			<uninstallcode />
+		</code>
+		<code version="*">
+			<installcode><![CDATA[
+				//$vbulletin->db->hide_errors();
+				$vbulletin->db->query_write("ALTER TABLE `" . TABLE_PREFIX . "forum`
+					ADD `inet_thread_summary_enabled` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+					ADD `inet_thread_summary_minimum_posts` INT(10) UNSIGNED NOT NULL DEFAULT '0',
+					ADD `inet_thread_summary_postscript` VARCHAR(10000) NOT NULL DEFAULT '',
+					ADD `inet_thread_summary_days_editable` INT(10) UNSIGNED NOT NULL DEFAULT '0'
+				");
+				//$vbulletin->db->show_errors();
+				build_forum_permissions();
+			]]></installcode>
+			<uninstallcode><![CDATA[
+				//$vbulletin->db->hide_errors();
+				$db->query_write("ALTER TABLE `" . TABLE_PREFIX . "forum`
+					DROP `inet_thread_summary_enabled`,
+					DROP `inet_thread_summary_minimum_posts`,
+					DROP `inet_thread_summary_postscript`,
+					DROP `inet_thread_summary_days_editable`
+				");
+				$vbulletin->db->show_errors();
+				build_forum_permissions();
+			]]></uninstallcode>
+		</code>
+	</codes>
+	<templates>
+		<template name="iNET_Thread_Summary" templatetype="template" date="0" username="" version=""><![CDATA[
+			<div id="inet_thread_summary">
+				$summary[content]
+				<br />
+				<if condition="!empty($summary['postscript'])">
+					<div id="thread_summary_postscript">
+						$summary[postscript]
+					</div>
+				</if>
+
+				<p>Contributors: $contributors</p>
+			</div>
+		]]></template>
+		<template name="iNET_Thread_Summary_Editor" templatetype="template" date="0" username="" version=""><![CDATA[
+			<script type="text/javascript">
+				$(document).ready(function() {
+					$('#inet_thread_summary_submit').click(function() {
+						$.post('ajax.php', $("#inet_thread_summary_editor_form").serialize(), function(data) {
+							$('#inet_thread_summary').html(data);
+						});
+						return false;
+					});
+
+					$('#inet_thread_summary_cancel').click(function() {
+						$('#summary-editor').hide();
+						return false;
+					});
+					
+					<if condition="($vbulletin->userinfo['permissions']['inet_thread_summaries'] & $vbulletin->bf_ugp_inet_thread_summaries['inet_can_admin_summaries'])">
+
+						$('#inet_thread_summary_close').click(function() {
+							$('#inet_thread_summary_do').val('inet_close_thread_summary');
+							$.post('ajax.php', $("#inet_thread_summary_editor_form").serialize(), function(data) {
+								$('#inet_thread_summary').html(data);
+							});
+							$('#summary-editor').hide();
+							$('#loadEditor').hide();
+							return false;
+						});
+						
+						$('#inet_thread_summary_delete').click(function() {
+							$('#inet_thread_summary_do').val('inet_delete_thread_summary');
+							$.post('ajax.php', $("#inet_thread_summary_editor_form").serialize(), function(data) {
+								$('#inet_thread_summary').html(data);
+							});
+							$('#summary-editor').hide();
+							$('#loadEditor').hide();
+							return false;
+						});
+					</if>
+				});
+			</script>
+
+			<form id="inet_thread_summary_editor_form" method="post" action="/ajax.php">
+				<input id="inet_thread_summary_do" type="hidden" name="do" value="inet_save_thread_summary" />
+				<input type="hidden" name="threadid" value="$thread[threadid]" />
+				<input type="hidden" name="s" value="$session[sessionhash]" />
+				<input type="hidden" name="securitytoken" value="$bbuserinfo[securitytoken]" />
+				$editorHtml
+				<input id="inet_thread_summary_submit" type="button" value="Save" />
+				<input id="inet_thread_summary_cancel" type="button" value="Cancel" />
+				<if condition="($vbulletin->userinfo['permissions']['inet_thread_summaries'] & $vbulletin->bf_ugp_inet_thread_summaries['inet_can_admin_summaries'])">
+					<input id="inet_thread_summary_close" type="button" value="Close" />
+					<input id="inet_thread_summary_delete" type="button" value="Delete" />
+				</if>
+			</form>
+		]]></template>
+		<template name="iNET_Thread_Summary_Postbit" templatetype="template" date="0" username="" version=""><![CDATA[
+			<if condition="$summary['status'] != 'Deleted'">
+			
+				$inetThreadSummary
+
+				<if condition="($vbulletin->userinfo['permissions']['inet_thread_summaries'] & $vbulletin->bf_ugp_inet_thread_summaries['inet_can_edit_summaries'])">
+					<if condition="$summary['status'] == 'Open'">
+
+						<script type="text/javascript">
+							$(document).ready(function(){
+								$('#loadEditor').click(function() {
+									$.get('ajax.php?do=inet_load_thread_summary_editor&threadid=$thread[threadid]', function(data) {
+										$('#summary-editor').html(data);
+									});
+
+									$('#summary-editor').show();
+
+									return false;
+								});
+							});
+						</script>
+
+						<if condition="empty($summary['content'])">
+							<a id="loadEditor" href="#">This is an editable thread summary - click here to get started</a>
+						<else />
+							<a id="loadEditor" href="#">Click to contribute to this thread summary</a>
+						</if>
+						<div id="summary-editor"></div>
+					<else />
+						[Summary closed]
+					</if>
+
+				</if>
+			<else />
+				<if condition="($vbulletin->userinfo['permissions']['inet_thread_summaries'] & $vbulletin->bf_ugp_inet_thread_summaries['inet_can_edit_summaries'])">
+					[Summary deleted]
+				</if>
+			</if>
+		]]></template>
+	</templates>
+	<plugins>
+		<plugin active="1" executionorder="5">
+			<title>Ajax Handlers</title>
+			<hookname>ajax_start</hookname>
+			<phpcode><![CDATA[if ($_POST['do'] == 'inet_load_thread_summary_editor') {
+
+	$vbulletin->input->clean_array_gpc('p', array(
+		'threadid' => TYPE_UINT
+	));
+	
+	if (!($vbulletin->userinfo['permissions']['inet_thread_summaries'] & $vbulletin->bf_ugp_inet_thread_summaries['inet_can_edit_summaries'])) {
+		eval('print_output("You do not have permission to edit thread summaries.");');
+	}
+
+	if (!empty($vbulletin->GPC['threadid'])) {
+	
+		$thread = verify_id('thread', $vbulletin->GPC['threadid'], 1, 1);
+	
+		// Fetch most recent thread summary
+		$summary = inet_thread_summaries_fetch_summary($thread['threadid']);
+		
+		if ($summary['status'] == 'Closed') {
+			print_output('[Summary closed]');
+		}
+
+		if ($summary) {
+			$summaryContent = $summary['content'];
+		} else {
+			$summaryContent = '';
+		}
+		
+		require_once(DIR.'/includes/functions_editor.php');
+	
+		construct_edit_toolbar($summaryContent, 0, $thread['forumid'], 1, 1, false, 'fe', 'thread_summary_editor_'.$thread['threadid']);
+		$editorHtml = process_replacement_vars($messagearea);
+	
+		eval('print_output("' . fetch_template('iNET_Thread_Summary_Editor') . '");');
+	}
+}
+
+if (in_array($_POST['do'], array('inet_save_thread_summary', 'inet_preview_thread_summary'))) {
+
+	$vbulletin->input->clean_array_gpc('p', array(
+		'threadid' => TYPE_UINT,
+		'wysiwyg' => TYPE_BOOL,
+		'message' => TYPE_STR,
+	));
+	
+	// Make sure this user has permission to edit summaries
+	if (!($vbulletin->userinfo['permissions']['inet_thread_summaries'] & $vbulletin->bf_ugp_inet_thread_summaries['inet_can_edit_summaries'])) {
+		eval('print_output("You do not have permission to edit thread summaries.");');
+	}
+	
+	$thread = verify_id('thread', $vbulletin->GPC['threadid'], 1, 1);
+	$forum = verify_id('forum', $thread['forumid'], 1, 1);
+	
+	// Make sure that this thread's forum is enabled for summaries
+	if (!$forum['inet_thread_summary_enabled']) {
+		eval('print_output("Thread summaries are not enabled for this forum.");');
+	}
+	
+	// Make sure that this thread has reached the appropriate number of posts
+	if ($thread['replycount'] < $forum['inet_thread_summary_minimum_posts']) {
+		eval('print_output("This thread does not have the minimum required replies for a thread summary.<pre>");');
+	}
+
+	if (!empty($vbulletin->GPC['threadid'])) {
+	
+		// Fetch most recent thread summary
+		$summary = inet_thread_summaries_fetch_summary($vbulletin->GPC['threadid']);
+
+		// Make sure the summary is open for editing
+		if ($summary['status'] == 'Closed') {
+			print_output('[Summary closed]');
+			exit;
+		}
+		
+		if ($vbulletin->GPC['wysiwyg']) {
+			require_once(DIR . '/includes/functions_wysiwyg.php');
+			$message = convert_wysiwyg_html_to_bbcode($vbulletin->GPC['message'], $foruminfo['allowhtml']);
+		} else {
+			$message =& $vbulletin->GPC['message'];
+		}
+
+		if ($_POST['do'] == 'inet_save_thread_summary') {
+			// Passed all of the checks and not previewing, go ahead and save the new summary revision
+			$vbulletin->db->query('
+				INSERT INTO ' . TABLE_PREFIX . 'inet_thread_summaries (threadid, userid, content, created)
+				VALUES (
+					'.$vbulletin->GPC['threadid'].',
+					'.$vbulletin->userinfo['userid'].',
+					"'.mysql_real_escape_string($message).'",
+					NOW()
+				)
+			');
+		}
+		
+		
+		$summary = array();
+		
+		// Run the thread summary through the BBCode parser
+		require_once(DIR . '/includes/class_bbcode.php');
+		$parser =& new vB_BbCodeParser($vbulletin, fetch_tag_list());
+		$summary['content'] = $parser->do_parse($message);
+		
+		// Run the postscript through the BBCode parser
+		$summary['postscript'] = $parser->do_parse($forum['inet_thread_summary_postscript']); 
+		
+		// Fetch contributors
+		$contributors = inet_thread_summaries_fetch_contributors($vbulletin->GPC['threadid']);
+		
+		$contributorHtml = array();
+		foreach ($contributors as $contributor) {
+			$contributorHtml[] = '<a href="/member.php?u='.$contributor['userid'].'">'.$contributor['username'].'</a>';
+		}
+		$contributors = implode(', ', $contributorHtml);
+	
+		eval('print_output("' . fetch_template('iNET_Thread_Summary') . '");');
+	}
+}
+
+if ($_POST['do'] == 'inet_close_thread_summary') {
+
+	$vbulletin->input->clean_array_gpc('p', array(
+		'threadid' => TYPE_UINT
+	));
+	
+	// Make sure this user has permission to edit summaries
+	if (!($vbulletin->userinfo['permissions']['inet_thread_summaries'] & $vbulletin->bf_ugp_inet_thread_summaries['inet_can_edit_summaries'])) {
+		eval('print_output("You do not have permission to edit thread summaries.");');
+	}
+	
+	if (!empty($vbulletin->GPC['threadid'])) {
+		$summary = $vbulletin->db->query_first('SELECT MAX(summaryid) as summaryid FROM ' . TABLE_PREFIX . 'inet_thread_summaries its WHERE its.threadid = ' . $vbulletin->GPC['threadid']);
+		
+		if (!empty($summary['summaryid']) && is_numeric($summary['summaryid'])) {
+		
+			$vbulletin->db->query('
+				UPDATE ' . TABLE_PREFIX . 'inet_thread_summaries
+				SET
+					status = "Closed"
+				WHERE
+					summaryid = '.$summary['summaryid'].'
+			');
+		
+			print_output("[Summary closed]");
+			
+		}
+	
+	}
+}
+
+if ($_POST['do'] == 'inet_thread_summary_reopen') {
+
+	$vbulletin->input->clean_array_gpc('p', array(
+		'threadid' => TYPE_UINT
+	));
+	
+	// Make sure this user has permission to edit summaries
+	if (!($vbulletin->userinfo['permissions']['inet_thread_summaries'] & $vbulletin->bf_ugp_inet_thread_summaries['inet_can_edit_summaries'])) {
+		eval('print_output("You do not have permission to edit thread summaries.");');
+	}
+	
+	if (!empty($vbulletin->GPC['threadid'])) {
+		$summary = $vbulletin->db->query_first('SELECT MAX(summaryid) as summaryid FROM ' . TABLE_PREFIX . 'inet_thread_summaries its WHERE its.threadid = ' . $vbulletin->GPC['threadid']);
+		
+		if (!empty($summary['summaryid']) && is_numeric($summary['summaryid'])) {
+		
+			$vbulletin->db->query('
+				UPDATE ' . TABLE_PREFIX . 'inet_thread_summaries
+				SET
+					status = "Open"
+				WHERE
+					summaryid = '.$summary['summaryid'].'
+			');
+			
+		}
+	
+	}
+}
+
+if ($_POST['do'] == 'inet_delete_thread_summary') {
+
+	$vbulletin->input->clean_array_gpc('p', array(
+		'threadid' => TYPE_UINT
+	));
+	
+	// Make sure this user has permission to edit summaries
+	if (!($vbulletin->userinfo['permissions']['inet_thread_summaries'] & $vbulletin->bf_ugp_inet_thread_summaries['inet_can_edit_summaries'])) {
+		eval('print_output("You do not have permission to edit thread summaries.");');
+	}
+	
+	if (!empty($vbulletin->GPC['threadid'])) {
+		$vbulletin->db->query('
+			INSERT INTO ' . TABLE_PREFIX . 'inet_thread_summaries (threadid, userid, content, status, created)
+			VALUES (
+				'.$vbulletin->GPC['threadid'].',
+				'.$vbulletin->userinfo['userid'].',
+				"[Summary deleted]",
+				"Deleted",
+				NOW()
+			)
+		');
+	
+		print_output("[Summary deleted]");
+	}
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Forum settings form</title>
+			<hookname>forumadmin_edit_form</hookname>
+			<phpcode><![CDATA[
+				print_table_header($vbphrase['inet_thread_summaries']);
+				print_yes_no_row($vbphrase['inet_enable_summaries'], 'forum[inet_thread_summary_enabled]', $forum['inet_thread_summary_enabled']);
+				print_input_row($vbphrase['inet_summary_minimum_posts'], 'forum[inet_thread_summary_minimum_posts]', $forum['inet_thread_summary_minimum_posts']);
+				print_textarea_row($vbphrase['inet_summary_postscript'], 'forum[inet_thread_summary_postscript]', $forum['inet_thread_summary_postscript']);
+				print_input_row($vbphrase['inet_summary_days_editable'], 'forum[inet_thread_summary_days_editable]', $forum['inet_thread_summary_days_editable']);
+			]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Forum settings</title>
+			<hookname>forumdata_start</hookname>
+			<phpcode><![CDATA[
+				$this->validfields['inet_thread_summary_enabled'] = array(TYPE_STR, REQ_NO);
+				$this->validfields['inet_thread_summary_minimum_posts'] = array(TYPE_INT, REQ_NO);
+				$this->validfields['inet_thread_summary_postscript'] = array(TYPE_STR, REQ_NO);
+				$this->validfields['inet_thread_summary_days_editable'] = array(TYPE_INT, REQ_NO);
+			]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Function Library</title>
+			<hookname>init_startup</hookname>
+			<phpcode><![CDATA[if (!function_exists('inet_thread_summaries_fetch_summary')) {
+					function inet_thread_summaries_fetch_summary($threadid) {
+						global $vbulletin;
+
+						// Fetch most recent thread summary
+						$summary = $vbulletin->db->query_first('
+							SELECT
+								summaryid,
+								userid,
+								content,
+								status,
+								created
+							FROM
+								' . TABLE_PREFIX . 'inet_thread_summaries its
+							WHERE
+								its.threadid = ' . $threadid . '
+							ORDER BY
+								its.created DESC
+						');
+						
+						return $summary;
+					}
+				}
+
+				if (!function_exists('inet_thread_summaries_fetch_contributors')) {
+					function inet_thread_summaries_fetch_contributors($threadid) {
+						global $vbulletin;
+
+						// Fetch users associated with the thread summary
+						$contributorsRs = $vbulletin->db->query_read_slave('
+							SELECT DISTINCT
+								u.userid,
+								u.username
+							FROM
+								' . TABLE_PREFIX . 'inet_thread_summaries its
+								INNER JOIN ' . TABLE_PREFIX . 'user u ON its.userid = u.userid
+							WHERE
+								its.threadid = ' .  $threadid . '
+						');
+						
+						$contributors = array();
+						while ($contributor = $vbulletin->db->fetch_array($contributorsRs)) {
+							$contributors[] = $contributor;
+						}
+						
+						return $contributors;
+					}
+				}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Display Thread Summary</title>
+			<hookname>postbit_display_complete</hookname>
+			<phpcode><![CDATA[if ($forum['inet_thread_summary_enabled'] && $thread['replycount'] >= $forum['inet_thread_summary_minimum_posts'] && $post['postcount'] == 1) {
+
+					$inetThreadSummary = '';
+					
+					// Fetch most recent thread summary
+					$summary = inet_thread_summaries_fetch_summary($thread['threadid']);
+					
+					if (!empty($summary['content']) && $summary['status'] != 'Deleted') {
+					
+						// Run the thread summary through the BBCode parser
+						require_once(DIR . '/includes/class_bbcode.php');
+						$parser =& new vB_BbCodeParser($vbulletin, fetch_tag_list());
+						$summary['content'] = $parser->do_parse($summary['content']);
+						
+						// Run the postscript through the BBCode parser
+						$summary['postscript'] = $parser->do_parse($forum['inet_thread_summary_postscript']); 
+						
+						// Fetch contributors
+						$contributors = inet_thread_summaries_fetch_contributors($thread['threadid']);
+						
+						$contributorHtml = array();
+						foreach ($contributors as $contributor) {
+							$contributorHtml[] = '<a href="/member.php?u='.$contributor['userid'].'">'.$contributor['username'].'</a>';
+						}
+						$contributors = implode(', ', $contributorHtml);
+					
+						eval('$inetThreadSummary = "' . fetch_template('iNET_Thread_Summary') . '";');
+					}
+
+					eval('$template_hook[\'postbit_end\'] .= "' . fetch_template('iNET_Thread_Summary_Postbit') . '";');
+				}]]></phpcode>
+		</plugin>
+	</plugins>
+	<phrases>
+		<phrasetype name="GLOBAL" fieldname="global">
+			<phrase name="inet_can_admin_summaries" date="0" username="" version=""><![CDATA[Can close/delete thread summaries]]></phrase>
+			<phrase name="inet_can_edit_summaries" date="0" username="" version=""><![CDATA[Can edit thread summaries]]></phrase>
+			<phrase name="inet_enable_summaries" date="0" username="" version=""><![CDATA[Enable thread summaries]]></phrase>
+			<phrase name="inet_summary_days_editable" date="0" username="" version=""><![CDATA[Once created, how many days should a thread summary remain editable? (0 for indefinitely))]]></phrase>
+			<phrase name="inet_summary_minimum_posts" date="0" username="" version=""><![CDATA[Minimum thread posts before thread summaries can be created]]></phrase>
+			<phrase name="inet_summary_postscript" date="0" username="" version=""><![CDATA[Thread summary postscript content (optional)]]></phrase>
+			<phrase name="inet_thread_summaries" date="0" username="" version=""><![CDATA[iNET Thread Summaries]]></phrase>
+		</phrasetype>
+	</phrases>
+	<options>
+	</options>
+	<helptopics>
+	</helptopics>
+	<cronentries>
+	</cronentries>
+	<faqentries>
+	</faqentries>
+</product>
