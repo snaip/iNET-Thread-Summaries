@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="ISO-8859-1"?>
 
 <product productid="inet_thread_summaries" active="1">
-	<title>iNET Thread Summaries</title>
+	<title>iNET Thread Summaries - version 2</title>
 	<description>Provides editable thread summaries.</description>
 	<version>1.0</version>
 	<url>http://www.inetinteractive.com</url>
